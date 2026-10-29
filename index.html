@@ -1,0 +1,1095 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f211d">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="本棚">
+<meta name="format-detection" content="telephone=no">
+<title>本棚</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@600;800&family=Zen+Kaku+Gothic+New:wght@400;700&display=swap">
+<style>
+/* =====================================================
+   1. 色・サイズの設定(ここを変えると全体の雰囲気が変わります)
+   ===================================================== */
+:root{
+  box-sizing:border-box;color-scheme:dark;
+  --wall:#0f211d;            /* 壁の色 */
+  --wood:#6b4327;            /* 棚板の木の色 */
+  --wood-hi:#9a6a40;         /* 棚板の上面(明るい部分) */
+  --wood-lo:#2a1709;         /* 棚板の下面(影) */
+  --back:#1a0f08;            /* 棚の奥の色 */
+  --gold:#e6c776;            /* 金色(ラベル・装飾) */
+  --gold2:#a9822f;
+  --ink:#f3e9d2;             /* 文字色 */
+  --mut:#a99f88;             /* 補助文字色 */
+  --cell:248px;              /* 棚1段の高さ(JS側の spineHeight より大きく) */
+  --plank:20px;              /* 棚板の厚さ */
+  --serif:"Shippori Mincho","Hiragino Mincho ProN","Yu Mincho","Noto Serif JP","Noto Serif CJK JP",serif;
+}
+*,*::before,*::after{box-sizing:inherit}
+html{touch-action:manipulation} /* ダブルタップでの拡大を防ぐ(連打する ▲▼ ◀▶ 用) */
+body{margin:0;-webkit-text-size-adjust:100%;-webkit-tap-highlight-color:transparent;color:var(--ink);font:400 1rem/1.7 "Zen Kaku Gothic New","Hiragino Sans","Yu Gothic","Noto Sans JP","Noto Sans CJK JP",sans-serif;
+  background:repeating-linear-gradient(90deg,rgba(255,255,255,.025) 0 2px,transparent 2px 40px),var(--wall)}
+:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+
+/* =====================================================
+   2. 背景の演出(ランプの光・舞う光の粒)
+   ===================================================== */
+.lamp{position:fixed;inset:-20% 0 auto;height:85%;pointer-events:none;background:radial-gradient(50% 55% at 50% 0%,rgba(255,196,110,.3),transparent 70%);animation:sway 9s ease-in-out infinite alternate}
+.mote{position:fixed;bottom:-10px;z-index:3;width:var(--s);height:var(--s);border-radius:50%;background:rgba(255,224,160,.8);opacity:0;pointer-events:none;animation:floatUp var(--d) linear var(--l) infinite}
+@keyframes sway{from{transform:translateX(-8%);opacity:.75}to{transform:translateX(8%);opacity:1}}
+@keyframes floatUp{0%{transform:translate(0,0);opacity:0}10%{opacity:.8}90%{opacity:.4}100%{transform:translate(var(--x),-105vh);opacity:0}}
+
+/* =====================================================
+   3. 上部バー(ジャンル絞り込み・並び替え)
+   ===================================================== */
+.top{position:sticky;top:0;z-index:10;padding:calc(12px + env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-right,0px)) 14px max(16px,env(safe-area-inset-left,0px));background:linear-gradient(var(--wall) 65%,transparent);transition:transform .35s;animation:topIn .7s cubic-bezier(.2,.8,.2,1) backwards}
+.top.hide{transform:translateY(-100%)}
+.bar{max-width:960px;margin:0 auto;display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:10px 14px}
+.tabs{display:flex;flex-wrap:wrap;gap:6px}
+.tab{border:1px solid rgba(230,199,118,.3);background:rgba(0,0,0,.3);color:var(--ink);font:inherit;font-size:.88rem;padding:4px 14px;border-radius:999px;cursor:pointer;transition:transform .25s,border-color .25s,box-shadow .25s}
+@media(hover:hover){.tab:hover{transform:translateY(-2px);border-color:var(--gold)}}
+.tab.on{background:linear-gradient(135deg,var(--gold),var(--gold2));color:#2a1a05;font-weight:700;border-color:transparent;box-shadow:0 0 18px rgba(230,199,118,.45)}
+.tab small{margin-left:6px;opacity:.7}
+select,input,textarea{width:100%;padding:10px 12px;font:inherit;color:var(--ink);background:rgba(0,0,0,.35);border:1px solid rgba(230,199,118,.3);border-radius:10px;transition:border-color .2s,box-shadow .2s}
+select:focus,input:focus,textarea:focus{outline:none;border-color:var(--gold);box-shadow:0 0 0 3px rgba(230,199,118,.25)}
+input[type=date]{min-height:46px;-webkit-appearance:none;appearance:none;text-align:left}
+textarea{resize:none;line-height:1.6}
+.tools{display:flex;align-items:center;gap:8px;min-width:0}
+.tools .btn{padding:5px 14px;font-size:.88rem}
+#sort{width:auto;padding:5px 10px}
+.search{width:200px;padding:5px 12px 5px 34px;border-radius:999px;-webkit-appearance:none;appearance:none;background:rgba(0,0,0,.35) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23e6c776' stroke-width='2.5' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m20 20-4-4'/%3E%3C/svg%3E") no-repeat 12px center/16px}
+
+/* =====================================================
+   4. 本棚(ジャンルごとの棚・棚板・ラベル)
+   ===================================================== */
+.wrap{position:relative;z-index:1;max-width:960px;margin:0 auto;padding:6px 14px calc(120px + env(safe-area-inset-bottom,0px))}
+.welcome{margin:0 0 22px;text-align:center;color:var(--gold);animation:fade .8s both}
+.case{margin-bottom:34px}
+.plate{position:relative;z-index:2;display:inline-flex;align-items:center;gap:8px;margin-left:22px;padding:5px 18px;overflow:hidden;
+  background:linear-gradient(135deg,#f1d98f,#b88a32 55%,#e8c872);color:#2a1a05;font:800 .95rem var(--serif);letter-spacing:.18em;border-radius:6px 6px 0 0;box-shadow:0 -2px 12px rgba(230,199,118,.35)}
+.plate::after{content:"";position:absolute;inset:0;pointer-events:none;background:linear-gradient(105deg,transparent 35%,rgba(255,255,255,.7) 50%,transparent 65%);transform:translateX(-130%);animation:shine 6s ease-in-out infinite}
+.plate small{font:700 .75rem sans-serif;letter-spacing:0;opacity:.7}
+.plate i{font-style:normal;cursor:pointer;padding:0 4px}
+/* 棚の本体。背景を縦にくり返して、1段ごとに棚板を描いています(1段の高さ=--cell) */
+.books{display:flex;flex-wrap:wrap;align-content:flex-start;column-gap:2px;row-gap:var(--plank);min-height:calc(var(--cell) + var(--plank));padding:0 18px var(--plank);
+  border:solid var(--wood);border-width:10px 14px 0;border-top-color:var(--wood-hi);
+  background:
+    repeating-linear-gradient(180deg,transparent 0 var(--cell),var(--wood-hi) var(--cell) calc(var(--cell) + 3px),var(--wood) calc(var(--cell) + 3px) calc(var(--cell) + var(--plank) - 5px),var(--wood-lo) calc(var(--cell) + var(--plank) - 5px) calc(var(--cell) + var(--plank))),
+    repeating-linear-gradient(90deg,rgba(255,255,255,.015) 0 3px,transparent 3px 9px),var(--back);
+  box-shadow:inset 0 26px 30px -14px rgba(0,0,0,.75),0 18px 30px -14px rgba(0,0,0,.8)}
+.slot{display:flex;align-items:flex-end;height:var(--cell)}
+.hint{display:grid;place-items:end center;width:100%;height:var(--cell);margin:0;padding-bottom:26px;color:var(--mut);font-size:.9rem}
+
+/* =====================================================
+   5. 背表紙(1冊分)  色・大きさは JS の spineStyle() が決めます
+   ===================================================== */
+.book{position:relative;display:flex;flex-direction:column;align-items:center;gap:6px;width:var(--w);height:var(--h);padding:10px 0 8px;border:0;border-radius:3px 3px 1px 1px;overflow:hidden;cursor:pointer;
+  color:#f3e3b8;font:700 var(--fs,13px)/1.35 var(--serif);
+  background:linear-gradient(90deg,rgba(255,255,255,.14),transparent 18%,transparent 70%,rgba(0,0,0,.35)),hsl(var(--bh) var(--bs) var(--bl));
+  box-shadow:2px 0 6px rgba(0,0,0,.5);transform-origin:50% 100%;transition:transform .3s cubic-bezier(.3,1.5,.5,1),filter .3s}
+.book::before,.book::after{content:"";flex:none;width:100%;height:5px;opacity:.75;background:linear-gradient(var(--gold) 0 1px,transparent 1px 3px,var(--gold) 3px 4px,transparent 4px)}
+.ttl{flex:1;min-height:0;max-width:100%;overflow:hidden;writing-mode:vertical-rl;letter-spacing:.04em;overflow-wrap:anywhere}
+.pips{flex:none;display:flex;gap:2px}
+.pips b{width:4px;height:4px;border-radius:50%;background:rgba(0,0,0,.4)}
+.pips b.on{background:var(--gold);box-shadow:0 0 4px var(--gold)}
+.sh{position:absolute;inset:0;pointer-events:none;background:linear-gradient(105deg,transparent 30%,rgba(255,235,170,.4) 50%,transparent 70%);transform:translateX(-120%)}
+.book:focus-visible{z-index:3;outline:none;filter:brightness(1.2);transform:translateY(-16px) rotate(-2.5deg)}
+.book:active{filter:brightness(1.25);transform:translateY(-10px) scale(1.03)}
+@media(hover:hover){.book:hover{z-index:3;filter:brightness(1.2);transform:translateY(-16px) rotate(-2.5deg)}.book:hover .sh{transition:transform .7s;transform:translateX(120%)}}
+
+/* 登場アニメーション: 読み込み・絞り込み時は全冊、保存した本は光りながら登場 */
+.ani .book{animation:drop .8s calc(var(--i)*40ms) cubic-bezier(.3,1.3,.5,1) backwards}
+.book.n{animation:drop .9s cubic-bezier(.3,1.3,.5,1) backwards,glow 1.6s .8s 2}
+@keyframes drop{0%{opacity:0;transform:translateY(-150px) rotate(var(--r))}55%{opacity:1}75%{transform:translateY(8px) rotate(0)}100%{transform:none}}
+@keyframes glow{50%{box-shadow:0 0 28px 6px rgba(255,214,120,.9)}}
+@keyframes fade{from{opacity:0;transform:translateY(8px)}}
+@keyframes shine{0%,70%{transform:translateX(-130%)}100%{transform:translateX(130%)}}
+@keyframes ring{70%,100%{box-shadow:0 8px 26px -6px rgba(230,160,40,.7),0 0 0 16px rgba(230,199,118,0)}}
+@keyframes pop{0%{transform:scale(.4)}60%{transform:scale(1.3)}100%{transform:scale(1)}}
+@keyframes shake{25%{transform:translateX(-6px)}75%{transform:translateX(6px)}}
+@keyframes rise{from{transform:scaleY(0)}}
+
+/* =====================================================
+   6. ボタン・ツールチップ・入力画面
+   ===================================================== */
+.btn{border:1px solid rgba(230,199,118,.35);background:rgba(0,0,0,.3);color:var(--ink);font:inherit;font-weight:700;border-radius:10px;padding:10px 16px;cursor:pointer;white-space:nowrap;transition:border-color .2s,transform .15s}
+@media(hover:hover){.btn:hover{border-color:var(--gold)}}
+.btn:active{transform:scale(.97)}
+.btn.pri{background:linear-gradient(135deg,var(--gold),var(--gold2));border-color:transparent;color:#2a1a05}
+.btn.del{margin-right:auto;color:#ff9a8a;border-color:rgba(255,154,138,.4)}
+.btn[hidden]{display:none}
+.fab{position:fixed;right:20px;bottom:calc(20px + env(safe-area-inset-bottom,0px));z-index:10;border:0;border-radius:999px;padding:13px 24px;background:linear-gradient(135deg,#f1d98f,#c9953a);color:#2a1a05;font:inherit;font-weight:800;cursor:pointer;box-shadow:0 8px 26px -6px rgba(230,160,40,.7);animation:ring 2.4s infinite;transition:transform .25s}
+.fab:hover{transform:translateY(-3px)}
+#tip{position:fixed;z-index:30;max-width:240px;padding:8px 12px;border-radius:10px;background:rgba(10,8,5,.94);border:1px solid rgba(230,199,118,.5);font-size:.82rem;line-height:1.5;pointer-events:none;opacity:0;transition:opacity .15s}
+#tip.on{opacity:1}
+#tip span{color:var(--gold)}
+.ov{position:fixed;inset:0;z-index:20;display:flex;align-items:flex-end;justify-content:center;background:rgba(5,10,8,.65);-webkit-backdrop-filter:blur(5px);backdrop-filter:blur(5px);opacity:0;transition:opacity .3s}
+.ov[hidden]{display:none}
+.ov.show{opacity:1}
+.sheet{width:min(520px,100%);max-height:94%;overflow:auto;padding:26px 22px calc(24px + env(safe-area-inset-bottom,0px));background:linear-gradient(160deg,#2b1a0e,#1c110a);border:1px solid rgba(230,199,118,.45);border-radius:22px 22px 0 0;box-shadow:0 0 60px rgba(230,160,60,.2);transform:translateY(40px) scale(.97);transition:transform .45s cubic-bezier(.2,1.2,.3,1)}
+.ov.show .sheet{transform:none}
+@media(min-width:600px){.ov{align-items:center}.sheet{border-radius:22px}}
+.sheet h2{margin:0 0 18px;font:800 1.3rem var(--serif);color:var(--gold)}
+.fld{margin-bottom:16px}
+.fld>label{display:block;margin-bottom:6px;font-size:.82rem;font-weight:700;color:var(--mut)}
+.row,.gnew{display:flex;gap:8px}
+.gnew{margin-top:8px;animation:fade .3s both}
+.gnew[hidden]{display:none}
+.row select{flex:1;min-width:0}
+.rs{display:flex;align-items:center;gap:2px}
+.rs button{border:0;background:none;padding:2px 3px;font-size:2rem;line-height:1;color:rgba(255,255,255,.15);cursor:pointer;transition:color .2s,transform .2s}
+.rs button.on{color:var(--gold)}
+.rs button:hover{transform:scale(1.15)}
+.rs button.pop{animation:pop .45s}
+#rl{margin-left:10px;font-weight:400}
+.acts{display:flex;justify-content:flex-end;gap:10px;margin-top:8px}
+.shake{animation:shake .4s}
+/* ---- データ画面(統計・バックアップ)・お知らせ ---- */
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:18px;text-align:center}
+.stats b{display:block;font:800 1.7rem/1.3 var(--serif);color:var(--gold)}
+.stats span{font-size:.72rem;color:var(--mut)}
+.cap,.note{margin:0 0 8px;font-size:.8rem;color:var(--mut)}
+.cap{font-weight:700}
+.bars{display:flex;align-items:flex-end;gap:4px;height:128px;margin-bottom:22px}
+.mb{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:3px;font-size:.7rem;color:var(--mut)}
+.mb em{font-style:normal;font-weight:700;color:var(--gold)}
+.mb i{width:100%;height:calc(var(--p)*84px);min-height:2px;border-radius:4px 4px 0 0;background:linear-gradient(var(--gold),var(--gold2));transform-origin:bottom;animation:rise .7s var(--d) backwards cubic-bezier(.3,1.3,.5,1)}
+.mb i.z{background:rgba(255,255,255,.12)}
+#tip em{display:block;margin-top:4px;color:var(--mut);font-style:normal}
+#toast{position:fixed;left:50%;bottom:calc(86px + env(safe-area-inset-bottom,0px));z-index:40;padding:8px 18px;border-radius:999px;background:rgba(10,8,5,.95);border:1px solid var(--gold);color:var(--gold);font-size:.88rem;opacity:0;pointer-events:none;transform:translate(-50%,20px);transition:opacity .3s,transform .3s}
+#toast.on{opacity:1;transform:translate(-50%,0)}
+
+/* ---- iPhoneなど小さい画面向け ---- */
+@media(max-width:600px){
+  .tabrow{flex:1 1 100%}
+  .tabs{flex:1 1 0;min-width:0;flex-wrap:nowrap;overflow-x:auto;padding:6px 28px 6px 2px;margin:-6px 0;scrollbar-width:none;-webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 26px),transparent);mask-image:linear-gradient(90deg,#000 calc(100% - 26px),transparent)}
+  .tabs::-webkit-scrollbar{display:none}
+  .tab{flex:none}
+  .tools{flex:1 1 100%}
+  .search{flex:1 1 0;min-width:0;width:auto}
+  .wrap{padding-left:8px;padding-right:8px}
+  .plate{margin-left:12px}
+  .books{padding:0 8px var(--plank);border-width:8px 10px 0}
+}
+/* ---- 棚の上下移動ボタン ---- */
+.head{display:flex;justify-content:space-between;align-items:flex-end;padding-right:6px}
+.mv{display:flex;gap:8px;margin-bottom:8px}
+.mvb{width:38px;height:38px;border-radius:50%;border:1px solid rgba(230,199,118,.4);background:rgba(0,0,0,.35);color:var(--gold);font:inherit;font-size:.8rem;cursor:pointer;transition:transform .15s,background .2s,color .2s,opacity .2s}
+.mvb:disabled{opacity:.25;cursor:default}
+.mvb:not(:disabled):active{transform:scale(.88)}
+@media(hover:hover){.mvb:not(:disabled):hover{background:var(--gold);color:#2a1a05}}
+/* ---- ジャンルのタブを左右に動かす(並べ替えモード) ---- */
+.tabrow{display:flex;align-items:center;gap:8px;min-width:0}
+.tabs{flex:1 1 auto;min-width:0}
+.tabmode{flex:none;border-style:dashed;white-space:nowrap}
+.tab.arr{display:inline-flex;align-items:center;gap:2px;padding:0 4px;border:1px dashed var(--gold);cursor:default;animation:arrpulse 1.8s ease-in-out infinite}
+.tab.arr .nm{padding:0 4px}
+.tab.arr button{width:32px;height:34px;border:0;border-radius:50%;background:none;color:var(--gold);font:inherit;font-size:.8rem;cursor:pointer}
+.tab.arr button:disabled{opacity:.25;cursor:default}
+.tab.arr button:not(:disabled):active{background:rgba(230,199,118,.25)}
+@keyframes arrpulse{50%{box-shadow:0 0 14px rgba(230,199,118,.45)}}
+/* ---- 本の並べ替え(タップして選び、置きたい場所をタップ) ---- */
+.arranging .fab{display:none}
+.arranging #toast{bottom:calc(96px + env(safe-area-inset-bottom,0px))}
+.arranging .book:not(.sel):not(.n){animation:jig .5s ease-in-out infinite alternate;animation-delay:calc(var(--i)*-37ms)}
+.book.sel{z-index:4;filter:brightness(1.25);transform:translateY(-20px) rotate(-3deg);animation:selglow 1.1s ease-in-out infinite}
+.slot.end{width:50px}
+.drop{width:46px;height:calc(var(--cell) - 12px);border:2px dashed var(--gold);border-radius:4px;background:rgba(230,199,118,.08);color:var(--gold);font:inherit;font-size:1.3rem;cursor:pointer;animation:dropPulse 1.4s ease-in-out infinite}
+.armbar{position:fixed;left:12px;right:12px;bottom:calc(12px + env(safe-area-inset-bottom,0px));z-index:12;display:flex;align-items:center;gap:8px;padding:10px 12px;border-radius:16px;background:rgba(20,12,6,.96);border:1px solid var(--gold);box-shadow:0 10px 30px -8px rgba(0,0,0,.7),0 0 24px rgba(230,199,118,.25);animation:fade .35s both}
+.armbar[hidden]{display:none}
+.armbar p{flex:1;min-width:0;margin:0;font-size:.9rem;line-height:1.5}
+.armbar .r1{display:flex;min-width:0;white-space:nowrap}
+.armbar .t{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.armbar small{display:block;font-size:.72rem;color:var(--mut)}
+.armbar b{color:var(--gold)}
+.armbar .btn{padding:6px 10px;font-size:.85rem}
+@keyframes jig{from{transform:rotate(-1deg)}to{transform:rotate(1deg)}}
+@keyframes selglow{50%{box-shadow:0 0 26px 6px rgba(255,214,120,.9)}}
+@keyframes dropPulse{50%{background:rgba(230,199,118,.25)}}
+/* ---- 棚を1段で横スクロールする表示(初期設定)。折り返し表示は .hs が付かない状態 ---- */
+.bk{position:relative;--bw:14px;--bt:10px}
+.book{scroll-margin:110px 24px 100px}
+.hs .books{flex-wrap:nowrap;overflow-x:auto;overscroll-behavior-x:contain;padding-top:28px;min-height:calc(28px + var(--cell) + var(--plank));
+  background-position:0 28px,0 0,0 0;background-size:100% calc(var(--cell) + var(--plank)),auto,auto;background-repeat:no-repeat,repeat,repeat;
+  scrollbar-width:thin;scrollbar-color:var(--gold2) transparent}
+.hs .books::-webkit-scrollbar{height:10px}
+.hs .books::-webkit-scrollbar-track{background:rgba(0,0,0,.35)}
+.hs .books::-webkit-scrollbar-thumb{border-radius:6px;background:linear-gradient(var(--gold),var(--gold2))}
+.hs .slot{flex:none}
+.fd{display:none;position:absolute;top:var(--bt);bottom:var(--plank);width:40px;z-index:2;pointer-events:none;opacity:0;transition:opacity .25s}
+.hs .fd{display:block}
+.fd.l{left:var(--bw);background:linear-gradient(90deg,var(--back),transparent)}
+.fd.r{right:var(--bw);background:linear-gradient(270deg,var(--back),transparent)}
+.fd.on{opacity:1}
+@media(max-width:600px){.bk{--bw:10px;--bt:8px}}
+/* ---- 演出(アニメーション)。「視差効果を減らす」設定の端末では、まとめて止まります ---- */
+.vig{position:fixed;inset:0;z-index:2;pointer-events:none;background:radial-gradient(130% 95% at 50% 35%,transparent 55%,rgba(0,0,0,.42))}
+.book,.tab,.plate,.mvb,.btn,.fab,.armbar{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+.tab:active{transform:scale(.95)}
+.boot .fab{animation:ring 2.4s infinite,fabIn .7s .6s cubic-bezier(.3,1.5,.5,1) backwards} /* 開いた直後だけ、ボタンがぽんと現れる */
+.intro .tab{animation:fade .5s calc(var(--k,0)*55ms) backwards}
+.ani .case{animation:fade .6s calc(var(--ci)*90ms) backwards}
+.ani .plate{animation:plateIn .6s calc(var(--ci)*90ms + .1s) cubic-bezier(.3,1.4,.5,1) backwards}
+.ani .book .sh{animation:foil 1s calc(var(--i)*40ms + .8s) ease-out backwards}
+.gl{position:absolute;inset:var(--bt) var(--bw) var(--plank);z-index:1;overflow:hidden;pointer-events:none}
+.gl::after{content:"";position:absolute;top:0;bottom:0;left:0;width:35%;background:linear-gradient(105deg,transparent,rgba(255,220,150,.14),transparent);transform:translateX(-120%);animation:glint 9s ease-in-out calc(var(--ci,0)*1.7s) infinite}
+.spk{position:fixed;z-index:25;width:7px;height:7px;border-radius:50%;background:radial-gradient(#fff6d0,var(--gold));box-shadow:0 0 8px var(--gold);pointer-events:none}
+.ov.show .sheet>*{animation:fade .45s backwards}
+.ov.show .sheet>:nth-child(2){animation-delay:.05s}
+.ov.show .sheet>:nth-child(3){animation-delay:.1s}
+.ov.show .sheet>:nth-child(4){animation-delay:.15s}
+.ov.show .sheet>:nth-child(5){animation-delay:.2s}
+.ov.show .sheet>:nth-child(6){animation-delay:.25s}
+.ov.show .sheet>:nth-child(7){animation-delay:.3s}
+.ov.show .sheet>:nth-child(8){animation-delay:.35s}
+@keyframes topIn{from{transform:translateY(-100%)}}
+@keyframes plateIn{from{opacity:0;transform:translateX(-30px)}}
+@keyframes foil{from{transform:translateX(-120%)}to{transform:translateX(120%)}}
+@keyframes glint{0%,55%{transform:translateX(-120%)}100%{transform:translateX(420%)}}
+@keyframes fabIn{from{transform:scale(0) rotate(-90deg)}}
+/* ---- バックアップ・復元・元に戻す ---- */
+#toast{display:flex;align-items:center;width:max-content;max-width:calc(100vw - 24px)}
+#toast.act{pointer-events:auto}
+#toast button{flex:none;margin-left:12px;border:0;border-radius:999px;padding:4px 12px;background:var(--gold);color:#2a1a05;font:inherit;font-weight:700;cursor:pointer}
+#menu{position:relative}
+#menu.dot::after{content:"";position:absolute;top:-3px;right:-3px;width:10px;height:10px;border-radius:50%;background:#ff8a5c;box-shadow:0 0 8px #ff8a5c;animation:dotp 1.6s ease-in-out infinite}
+@keyframes dotp{50%{transform:scale(1.4)}}
+.sn{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 0;border-bottom:1px solid rgba(230,199,118,.15)}
+.sn small{display:block;color:var(--mut);font-size:.72rem}
+.sn .btn{padding:5px 14px;font-size:.85rem}
+.plate i[data-rn]{min-width:22px;text-align:center}
+/* ---- 本を開く動き: 背表紙が棚から抜けて広がり、表紙が左へ開いて、編集画面が現れる ---- */
+.cv{position:fixed;z-index:22;perspective:1700px;border-radius:3px 3px 1px 1px;cursor:pointer}
+.cvr{position:absolute;inset:0;border-radius:inherit;transform-origin:left center;transform-style:preserve-3d}
+.cf,.cb{position:absolute;inset:0;border-radius:inherit;backface-visibility:hidden;-webkit-backface-visibility:hidden}
+.cf{background:linear-gradient(90deg,rgba(255,255,255,.16),transparent 12%,transparent 82%,rgba(0,0,0,.35)),hsl(var(--bh) var(--bs) var(--bl));box-shadow:0 20px 50px -10px rgba(0,0,0,.7),inset 0 0 0 1px rgba(255,255,255,.08)}
+.cf::before{content:"";position:absolute;inset:14px;border:2px solid var(--gold);border-radius:3px;opacity:.8}
+.cf::after{content:"";position:absolute;inset:21px;border:1px solid var(--gold);border-radius:2px;opacity:.5}
+.lb{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:36px;text-align:center;color:#f3e3b8;animation:lbIn .3s .15s backwards}
+.lb b{display:-webkit-box;-webkit-line-clamp:5;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere;font:800 clamp(1.1rem,5vw,1.6rem)/1.5 var(--serif);text-shadow:0 1px 6px rgba(0,0,0,.5)}
+.lb small{font-size:.85rem;letter-spacing:.2em;color:var(--gold)}
+.cb{transform:rotateY(180deg);background:linear-gradient(270deg,#1a0f08,#2b1a0e 60%,#1a0f08);box-shadow:inset 0 0 0 1px rgba(230,199,118,.25)}
+@keyframes lbIn{from{opacity:0}}
+.ov.bko .sheet{opacity:0;transform:none;transition:none}
+.ov.bko.in .sheet{opacity:1;transition:opacity .12s}
+.ov.bko .sheet>*{animation:none}
+/* ---- 本のドラッグ並べ替え(長押ししてから動かす) ---- */
+.ghost{position:fixed;z-index:30;margin:0;pointer-events:none;transform-origin:50% 100%;filter:brightness(1.25);box-shadow:0 22px 34px rgba(0,0,0,.65),0 0 26px 4px rgba(255,214,120,.85);animation:none!important}
+.slot.ph{position:relative}
+.slot.ph .book{visibility:hidden}
+.slot.ph::after{content:"";position:absolute;left:0;right:0;bottom:0;height:calc(var(--cell) - 12px);border:2px dashed var(--gold);border-radius:4px;background:rgba(230,199,118,.1);animation:dropPulse 1.4s ease-in-out infinite}
+.books.dg{outline:2px solid rgba(230,199,118,.45);outline-offset:-3px}
+.dragging #tip{display:none}
+.dragging{cursor:grabbing}
+.book{-webkit-user-drag:none}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body class="boot">
+<div class="lamp"></div>
+<div class="vig"></div>
+<div class="top"><div class="bar">
+  <div class="tabrow"><div class="tabs intro" id="tabs"></div><button class="tab tabmode" id="arrange" type="button" aria-pressed="false">⇄ 並べ替え</button></div>
+  <div class="tools">
+    <input class="search" id="q" type="search" placeholder="検索" aria-label="タイトル・メモで検索" enterkeyhint="search" autocomplete="off">
+    <select id="sort" aria-label="並び替え"><option value="new">日付の新しい順</option><option value="old">日付の古い順</option><option value="rate">おすすめ順</option><option value="man">自分の並べ方</option></select>
+    <button class="btn" id="menu" type="button">データ</button>
+  </div>
+</div></div>
+<main class="wrap" id="shelves"></main>
+<button class="fab" id="add" type="button">＋ 本を追加</button>
+<div id="tip"></div>
+<div id="toast"></div>
+<div class="armbar" id="armbar" hidden></div>
+
+<!-- 本の追加・編集画面 -->
+<div class="ov" id="ov" hidden>
+<div class="sheet" role="dialog" aria-modal="true" aria-labelledby="mt">
+  <h2 id="mt">本を追加</h2>
+  <div class="fld"><label for="t">本のタイトル</label><input id="t" maxlength="100" placeholder="本のタイトル" autocomplete="off"></div>
+  <div class="fld"><label for="g">ジャンル</label>
+    <div class="row"><select id="g"></select><button class="btn" id="ga" type="button">ジャンルを追加</button></div>
+    <div class="gnew" id="gnew" hidden><input id="gi" maxlength="20" placeholder="新しいジャンル名" autocomplete="off"><button class="btn pri" id="gok" type="button">追加</button></div>
+  </div>
+  <div class="fld"><label for="d">読了日</label><input type="date" id="d"></div>
+  <div class="fld"><label>おすすめ度<span id="rl"></span></label>
+    <div class="rs" id="rs"><button type="button" data-n="1" aria-label="1">★</button><button type="button" data-n="2" aria-label="2">★</button><button type="button" data-n="3" aria-label="3">★</button><button type="button" data-n="4" aria-label="4">★</button><button type="button" data-n="5" aria-label="5">★</button></div>
+  </div>
+  <div class="fld"><label for="m">メモ・感想(任意)</label><textarea id="m" rows="3" maxlength="300" placeholder="読んだ感想や気づきをひと言"></textarea></div>
+  <div class="acts"><button class="btn del" id="del" type="button" hidden>削除</button><button class="btn" id="no" type="button">キャンセル</button><button class="btn pri" id="ok" type="button">保存</button></div>
+</div>
+</div>
+
+<!-- データ画面(統計・バックアップ) -->
+<div class="ov" id="ov2" hidden>
+<div class="sheet" role="dialog" aria-modal="true" aria-labelledby="mt2">
+  <h2 id="mt2">読書のデータ</h2>
+  <div class="stats" id="stats"></div>
+  <p class="cap">直近12か月に読んだ冊数</p>
+  <div class="bars" id="bars"></div>
+  <div class="fld"><label>棚の表示</label>
+    <div class="row"><button class="btn" id="hs1" type="button" style="flex:1">横スクロール</button><button class="btn" id="hs0" type="button" style="flex:1">折り返し</button></div>
+    <p class="note" style="margin-top:8px">本が増えたとき、1段のまま横にスクロールして見るか、下の段に折り返して見るかを選べます。</p>
+  </div>
+  <div class="fld"><label>バックアップ</label>
+    <p class="note" id="bkinfo"></p>
+    <div class="row"><button class="btn" id="exp" type="button" style="flex:1;white-space:normal">ファイルに保存</button><button class="btn" id="cpy" type="button" style="flex:1;white-space:normal">コピー</button></div>
+    <div class="row" style="margin-top:8px"><button class="btn" id="csv" type="button" style="flex:1;white-space:normal">CSVで保存(Excel用)</button></div>
+  </div>
+  <div class="fld"><label>読み込み・復元</label>
+    <div class="row"><button class="btn" id="m1" type="button" style="flex:1">追加する</button><button class="btn" id="m0" type="button" style="flex:1">置き換える</button></div>
+    <p class="note" id="minfo" style="margin:8px 0"></p>
+    <div class="row"><button class="btn" id="imp" type="button" style="flex:1;white-space:normal">ファイルから</button><button class="btn" id="pst" type="button" style="flex:1;white-space:normal">貼り付けて</button></div>
+    <div id="pbox" hidden style="margin-top:8px"><textarea id="ptxt" rows="3" placeholder="コピーしたバックアップのテキストを貼り付け"></textarea><button class="btn pri" id="pgo" type="button" style="margin-top:8px;width:100%">この内容を読み込む</button></div>
+    <input type="file" id="file" accept=".json,application/json,text/plain" hidden>
+  </div>
+  <div class="fld"><label>自動バックアップ(この端末のなか)</label><div id="snaps"></div></div>
+  <p class="note">iPhoneのSafariは、長く開かないと記録が消えることがあります。「ホーム画面に追加」して開くと消えにくくなります。</p>
+  <div class="acts"><button class="btn pri" id="close2" type="button">閉じる</button></div>
+</div>
+</div>
+
+<!-- ジャンル名の変更画面(ブラウザ標準の入力ダイアログは、環境によって出ないため、アプリ内の画面にしています) -->
+<div class="ov" id="ov3" hidden>
+<div class="sheet" role="dialog" aria-modal="true" aria-labelledby="mt3">
+  <h2 id="mt3">ジャンル名の変更</h2>
+  <div class="fld"><label for="gname">新しいジャンル名</label><input id="gname" maxlength="20" autocomplete="off"></div>
+  <div class="acts"><button class="btn" id="rno" type="button">キャンセル</button><button class="btn pri" id="rok" type="button">変更</button></div>
+</div>
+</div>
+
+<script>
+(()=>{
+/* =====================================================
+   1. 設定(ここを変えると動作が変わります)
+   ===================================================== */
+const CONFIG={
+  storageKey:'booklog:v1',                         // 保存名(変えると別のデータ扱いになります)
+  defaultGenres:['自己啓発','投資','小説','参考書'], // 最初から用意するジャンル
+  genreHues:[222,355,152,38,285,185,18,330],       // ジャンルごとの本の色(色相)。9個目以降はくり返し
+  spineWidth:46,                                   // 背表紙の幅(px)。すべての本で同じ
+  spineHeight:236,                                 // 背表紙の高さ(px)。すべての本で同じ。CSSの --cell より小さくする
+  titleFont:[12,14],                               // タイトルの文字サイズ(px)の下限と上限。下限より小さくはしない
+  ratingLabels:['','いまいち','まあまあ','おすすめ','かなりおすすめ','人生の一冊'],
+  snapshots:5,                                     // 自動バックアップを残す件数(この端末のなか)
+  motes:16                                         // 舞う光の粒の数(0で無し)
+};
+
+/* =====================================================
+   2. データ
+   book = { id, title, genre, date:'YYYY-MM-DD', rating:1〜5 }
+   ===================================================== */
+const $=s=>document.querySelector(s);
+const state={books:[],genres:[...CONFIG.defaultGenres],hue:{},filter:'すべて',sort:'new',q:'',arrange:false,sel:null,hs:true}  // hs: 棚を1段で横スクロールするか(false=折り返し); // hue: ジャンル名 → 色の番号
+let editId=null,rating=3,newId=null;
+const find=id=>state.books.find(b=>b.id===id);
+
+// ジャンルごとの色番号を保存しておく(棚を並び替えても、背表紙の色が変わらないようにするため)
+const hasHue=g=>Object.prototype.hasOwnProperty.call(state.hue,g);
+const hueOf=g=>hasHue(g)?state.hue[g]:0;
+function fixGenres(){
+  state.books.forEach(b=>{if(!state.genres.includes(b.genre))state.genres.push(b.genre)});
+  const used=new Set(Object.values(state.hue));let k=0;
+  state.genres.forEach(g=>{if(!hasHue(g)){while(used.has(k))k++;state.hue[g]=k;used.add(k)}});
+}
+// 表示の状態(ジャンルの絞り込み・並び順)も覚えておく
+const UIKEY=CONFIG.storageKey+':ui';
+function loadUI(){
+  try{const u=JSON.parse(localStorage.getItem(UIKEY));if(u){if(u.sort)state.sort=u.sort;if(u.filter)state.filter=u.filter;if(typeof u.hs==='boolean')state.hs=u.hs}}catch(e){}
+  if(state.filter!=='すべて'&&!state.genres.includes(state.filter))state.filter='すべて';
+  $('#sort').value=state.sort;
+}
+function saveUI(){try{localStorage.setItem(UIKEY,JSON.stringify({sort:state.sort,filter:state.filter,hs:state.hs}))}catch(e){}}
+function load(){
+  try{
+    const r=JSON.parse(localStorage.getItem(CONFIG.storageKey));
+    if(r&&Array.isArray(r.books)&&Array.isArray(r.genres)&&r.genres.length){state.books=r.books;state.genres=r.genres;state.hue=(r.hue&&typeof r.hue==='object')?r.hue:{}}
+  }catch(e){}
+  fixGenres();
+}
+function save(){
+  try{localStorage.setItem(CONFIG.storageKey,JSON.stringify({books:state.books,genres:state.genres,hue:state.hue}))}catch(e){}
+}
+
+/* =====================================================
+   3. 便利関数
+   ===================================================== */
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const pad=n=>String(n).padStart(2,'0');
+const today=()=>{const d=new Date();return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`};
+const fmt=s=>{if(!s)return '日付なし';const [y,m,d]=s.split('-');return `${y}年${+m}月${+d}日`};
+const hash=s=>{let h=0;for(const c of s)h=(h*31+c.charCodeAt(0))>>>0;return h}; // 本ごとに固定の乱数
+
+/* =====================================================
+   4. 表示(上部バー・本棚)
+   ===================================================== */
+// タイトルの長さ(全角=1。英数字・空白は幅が狭いので小さく数える)
+const unit=c=>c.charCodeAt(0)<256?(/[A-Z0-9]/.test(c)?.72:/\s/.test(c)?.35:.58):1;
+// 背表紙の大きさは、すべての本で同じ。タイトルはできるだけ1列に収める:
+//  1) 1列に入るなら、そのまま(入る範囲で大きい文字)
+//  2) 文字サイズの下限(CONFIG.titleFont の最小値)まで小さくしても入らないときだけ、2列にする
+//  3) 2列でも入らない長さは、末尾を「…」にして切る(全文は、本をタップした編集画面で見られる)
+function spineTitle(b){
+  const [fMin,fMax]=CONFIG.titleFont,room=CONFIG.spineHeight-56;   // 文字を置ける高さ(上下の飾りと余白を除く)
+  const chars=[...b.title],len=chars.reduce((a,c)=>a+unit(c),0);
+  const fit=Math.floor(room/(len*1.05));                           // 1列に収まる最大の文字サイズ
+  if(fit>=fMin)return {fs:Math.min(fMax,fit),text:b.title};
+  const cap=2*Math.floor(room/(fMin*1.05))-1;                      // 2列に入る長さ
+  if(len<=cap)return {fs:fMin,text:b.title};
+  let u=0,out='';
+  for(const c of chars){u+=unit(c);if(u>cap-1)break;out+=c}
+  return {fs:fMin,text:out+'…'};
+}
+// 背表紙の色・傾きを本のIDから決める(同じ本はいつも同じ見た目。大きさは全部同じ)
+function spineStyle(b,i){
+  const h=hash(b.id),base=CONFIG.genreHues[hueOf(b.genre)%CONFIG.genreHues.length],hue=(base+(h>>>3)%21-10+360)%360;
+  return `--h:${CONFIG.spineHeight}px;--w:${CONFIG.spineWidth}px;--fs:${spineTitle(b).fs}px;--bh:${hue};--bs:${38+(h>>>5)%14}%;--bl:${24+(h>>>7)%12}%;--r:${(h>>>9)%25-12}deg;--i:${i}`;
+}
+function sortBooks(a){
+  const d=x=>x.date||'';
+  if(state.sort==='man')return a.slice();   // 「自分の並べ方」は、保存されている順番のまま
+  return a.slice().sort((x,y)=>state.sort==='rate'?y.rating-x.rating||d(y).localeCompare(d(x)):state.sort==='old'?(d(x)||'9').localeCompare(d(y)||'9'):d(y).localeCompare(d(x)));
+}
+function bookHTML(b,i){
+  const n=b.id===newId;
+  const pips=[1,2,3,4,5].map(k=>`<b class="${k<=b.rating?'on':''}"></b>`).join('');
+  return `<div class="slot"><button class="book${n?' n':''}${b.id===state.sel?' sel':''}" data-id="${b.id}" aria-label="${esc(b.title)}" style="${spineStyle(b,n?0:Math.min(i,20))}"><i class="sh"></i><span class="ttl">${esc(spineTitle(b).text)}</span><span class="pips">${pips}</span></button></div>`;
+}
+function renderTabs(){
+  const n=g=>g==='すべて'?state.books.length:state.books.filter(b=>b.genre===g).length;
+  const last=state.genres.length-1;
+  $('#tabs').innerHTML=['すべて',...state.genres].map((g,k)=>{
+    const e=esc(g),c=n(g),i=state.genres.indexOf(g);
+    if(state.arrange&&g!=='すべて') // 並べ替えモード: ◀ ▶ で左右に動かす
+      return `<span class="tab arr" data-g="${e}"><button data-mvt="left" data-g="${e}" aria-label="${e}を左へ"${i===0?' disabled':''}>◀</button><span class="nm">${e}<small>${c}</small></span><button data-mvt="right" data-g="${e}" aria-label="${e}を右へ"${i===last?' disabled':''}>▶</button></span>`;
+    return `<button class="tab${g===state.filter?' on':''}" data-g="${e}" style="--k:${k}">${e}<small>${c}</small></button>`;
+  }).join('');
+}
+// 棚を上下に動かすボタン(「すべて」表示で、検索していないときだけ表示)
+function moveBtns(g){
+  if(state.filter!=='すべて'||state.q.trim()||state.genres.length<2)return '';
+  const i=state.genres.indexOf(g),e=esc(g),last=state.genres.length-1;
+  return `<div class="mv"><button class="mvb" data-mv="up" data-g="${e}" aria-label="${e}の棚を上へ"${i===0?' disabled':''}>▲</button><button class="mvb" data-mv="down" data-g="${e}" aria-label="${e}の棚を下へ"${i===last?' disabled':''}>▼</button></div>`;
+}
+function renderShelves(anim){
+  const root=$('#shelves'),q=state.q.trim().toLowerCase();
+  const sx=new Map([...root.querySelectorAll('.case')].map(c=>[c.dataset.g,c.querySelector('.books').scrollLeft])); // 横スクロールの位置を覚えておく
+  const hit=b=>!q||`${b.title} ${b.memo||''}`.toLowerCase().includes(q);   // 検索に合う本か
+  let genres=state.filter==='すべて'?state.genres:[state.filter],i=0;
+  if(q)genres=genres.filter(g=>state.books.some(b=>b.genre===g&&hit(b)));  // 検索中は、該当する本がある棚だけ表示
+  const note=!state.books.length?'棚はまだ空です。右下の「＋ 本を追加」から、最初の一冊を並べましょう。'
+    :(q&&!genres.length)?`「${esc(state.q.trim())}」に合う本は見つかりませんでした。`:'';
+  root.className='wrap'+(anim?' ani':'')+(state.hs?' hs':'');
+  root.innerHTML=(note?`<p class="welcome">${note}</p>`:'')+genres.map((g,ci)=>{
+    const bs=sortBooks(state.books.filter(b=>b.genre===g&&hit(b)));
+    const x=!CONFIG.defaultGenres.includes(g)&&!state.books.some(b=>b.genre===g)?`<i data-x="${esc(g)}" title="この棚を削除">×</i>`:'';
+    return `<section class="case" data-g="${esc(g)}" style="--ci:${Math.min(ci,6)}"><div class="head"><div class="plate">${esc(g)}${state.arrange?`<i data-rn="${esc(g)}" title="名前を変更">✎</i>`:''}<small>${bs.length}冊</small>${x}</div>${moveBtns(g)}</div><div class="bk"><div class="books">${bs.length?bs.map(b=>bookHTML(b,i++)).join(''):(state.sel?'':'<p class="hint">この棚はまだ空です</p>')}${state.sel?`<div class="slot end"><button class="drop" data-end="${esc(g)}" aria-label="${esc(g)}の最後に置く">＋</button></div>`:''}</div><i class="fd l"></i><i class="fd r"></i><i class="gl"></i></div></section>`;
+  }).join('');
+  if(!anim)root.querySelectorAll('.case').forEach(c=>{const v=sx.get(c.dataset.g);if(v)c.querySelector('.books').scrollLeft=v}); // 再描画しても、スクロール位置を戻す
+  if(newId){ // 追加・移動した本が横スクロールで隠れないよう、見える位置までスクロール
+    const k=[...root.querySelectorAll('.book')].find(x=>x.dataset.id===newId);
+    if(k){k.scrollIntoView({inline:'nearest',block:'nearest'});sparkle(k)}
+  }
+  updateFades();
+  newId=null;
+}
+function renderAll(anim){renderTabs();renderShelves(anim);renderBackupInfo()}
+
+/* =====================================================
+   5. 操作(絞り込み・並び替え・クリック)
+   ===================================================== */
+$('#tabs').onclick=e=>{
+  const m=e.target.closest('[data-mvt]');
+  if(m)return moveTab(m.dataset.g,m.dataset.mvt);
+  const t=e.target.closest('button.tab');
+  if(t){state.filter=t.dataset.g;saveUI();renderAll(true)}
+};
+// 並び順の説明(切り替えたときに、画面の下に出す)
+const SORT_NOTE={new:'読了日が新しい本から、自動で並べます',old:'読了日が古い本から、自動で並べます',rate:'おすすめ度が高い本から、自動で並べます',man:'自分で動かした並びのままにします(本を長押しで動かせます)'};
+$('#sort').onchange=e=>{state.sort=e.target.value;saveUI();renderShelves(true);toast(SORT_NOTE[state.sort],null,3600)};
+$('#shelves').onclick=e=>{
+  const k=e.target.closest('.book'),x=e.target.closest('[data-x]'),m=e.target.closest('[data-mv]'),en=e.target.closest('[data-end]'),rn=e.target.closest('[data-rn]');
+  if(k){if(state.arrange)pickBook(k.dataset.id);else openM(k.dataset.id,k)}
+  else if(en&&state.sel)placeBook(state.sel,{end:en.dataset.end});
+  else if(rn)renameGenre(rn.dataset.rn);
+  else if(m)moveShelf(m.dataset.g,m.dataset.mv);
+  else if(x){ // 本が0冊の追加ジャンルだけ、棚ごと削除できる
+    mark();
+    state.genres=state.genres.filter(g=>g!==x.dataset.x);delete state.hue[x.dataset.x];
+    if(state.filter===x.dataset.x){state.filter='すべて';saveUI()}
+    save();renderAll(true);toast('棚を削除しました',UNDO);
+  }
+};
+
+// 追加・移動した本が棚に落ち着いたとき、金色の粒をぱっと散らす
+function sparkle(k){
+  if(matchMedia('(prefers-reduced-motion:reduce)').matches)return;
+  setTimeout(()=>{
+    if(!k.isConnected)return;
+    const r=k.getBoundingClientRect(),x=r.left+r.width/2,y=r.top+r.height*.35;
+    for(let n=0;n<12;n++){
+      const d=document.createElement('i'),a=Math.PI*2*n/12+Math.random()*.5,L=34+Math.random()*34;
+      d.className='spk';d.style.left=x+'px';d.style.top=y+'px';document.body.append(d);
+      d.animate([{transform:'translate(-50%,-50%) scale(1)',opacity:1},{transform:`translate(calc(-50% + ${Math.cos(a)*L}px),calc(-50% + ${Math.sin(a)*L}px)) scale(0)`,opacity:0}],{duration:650+Math.random()*250,easing:'cubic-bezier(.2,.8,.3,1)'}).onfinish=()=>d.remove();
+    }
+  },650);
+}
+
+// 横スクロールできる棚の左右に、「まだ続きがある」ことを示す影を出す
+function updateFades(){
+  document.querySelectorAll('.bk').forEach(bk=>{
+    const b=bk.firstElementChild,max=b.scrollWidth-b.clientWidth;
+    bk.querySelector('.l').classList.toggle('on',state.hs&&b.scrollLeft>4);
+    bk.querySelector('.r').classList.toggle('on',state.hs&&max>4&&b.scrollLeft<max-4);
+  });
+}
+$('#shelves').addEventListener('scroll',updateFades,true);
+addEventListener('resize',updateFades);
+
+// 棚を1つ上(up)・下(down)へ動かす。並び順はジャンルの並びとして保存され、上部のジャンル名の順番にも反映される
+function moveShelf(g,dir){
+  const a=state.genres,i=a.indexOf(g),j=i+(dir==='up'?-1:1);
+  if(i<0||j<0||j>=a.length)return;
+  const before=new Map([...document.querySelectorAll('.case')].map(c=>[c.dataset.g,c.getBoundingClientRect().top]));
+  [a[i],a[j]]=[a[j],a[i]];
+  save();renderTabs();renderShelves(false);
+  const cases=[...document.querySelectorAll('.case')],moved=cases.find(c=>c.dataset.g===g);
+  if(moved){scrollBy(0,moved.getBoundingClientRect().top-before.get(g));lastY=scrollY} // 動かした棚を同じ位置に残す(続けて押しやすい)
+  if(matchMedia('(prefers-reduced-motion:reduce)').matches)return;
+  cases.forEach(c=>{ // 入れ替わった棚がすべるように動く
+    const dy=before.get(c.dataset.g)-c.getBoundingClientRect().top;
+    if(Math.abs(dy)>1)c.animate([{transform:`translateY(${dy}px)`},{transform:'none'}],{duration:450,easing:'cubic-bezier(.3,1.2,.5,1)'});
+  });
+  if(moved)moved.querySelector('.plate').animate([{boxShadow:'0 0 30px 8px rgba(255,214,120,.95)'},{boxShadow:'0 -2px 12px rgba(230,199,118,.35)'}],{duration:800});
+}
+
+// 並べ替えモードの入り・切り。入るときは、全部の棚が見えるように「すべて」に切り替え、検索は空にする。
+// このモードでは、ジャンル名(◀▶)・棚(▲▼)・本(タップして移動)を並べ替えられる
+function setArrange(on){
+  const b=$('#arrange'),was=state.filter;
+  state.arrange=on;state.sel=null;
+  b.classList.toggle('on',on);b.setAttribute('aria-pressed',on);
+  b.textContent=on?'完了':'⇄ 並べ替え';
+  if(on){state.filter='すべて';if(state.q){state.q='';$('#q').value=''}}
+  if(state.filter!==was)saveUI();
+  renderTabs();renderShelves(state.filter!==was);renderArm();
+}
+$('#arrange').onclick=()=>setArrange(!state.arrange);
+$('#armbar').onclick=e=>{
+  const a=e.target.closest('[data-a]');
+  if(!a)return;
+  if(a.dataset.a==='cancel'){state.sel=null;renderShelves(false);renderArm()}
+  else setArrange(false);
+};
+
+// ----- 本の移動(並べ替えモード) -----
+// 本をタップして選び、置きたい場所をタップする。「その本の前」か「棚の右端の点線の枠(=その棚の最後)」に入る。
+// 別のジャンルの棚に置くと、その本のジャンルも変わる。並び順は state.books の順番として保存される。
+function pickBook(id){
+  if(!state.sel)state.sel=id;
+  else if(state.sel===id)state.sel=null;
+  else return placeBook(state.sel,{before:id});
+  renderShelves(false);renderArm();
+}
+// 今見えている並び(日付順など)を、そのまま手動の並びとして確定する
+function bakeOrder(){state.books=state.genres.flatMap(g=>sortBooks(state.books.filter(b=>b.genre===g)))}
+function placeBook(id,t){
+  const b=find(id);
+  if(!b)return;
+  mark();
+  const pos=new Map([...document.querySelectorAll('.book')].map(k=>[k.dataset.id,k.getBoundingClientRect()]));
+  const g0=b.genre,sw=state.sort!=='man';
+  if(sw)bakeOrder();
+  state.books=state.books.filter(x=>x!==b);
+  if(t.before){const o=find(t.before);b.genre=o.genre;state.books.splice(state.books.indexOf(o),0,b)}
+  else{b.genre=t.end;let k=-1;state.books.forEach((x,i)=>{if(x.genre===t.end)k=i});state.books.splice(k+1,0,b)}
+  state.sort='man';$('#sort').value='man';saveUI();
+  state.sel=null;newId=id;save();renderAll(false);renderArm();
+  const msg=b.genre!==g0?`「${b.genre}」の棚に移しました`:sw?'並び順を「自分の並べ方」に切り替えました':'';
+  toast(msg||'移動しました',UNDO);
+  if(matchMedia('(prefers-reduced-motion:reduce)').matches)return;
+  document.querySelectorAll('.book').forEach(k=>{ // ほかの本はすべるように動く(動かした本は上から落ちる)
+    const o=pos.get(k.dataset.id);
+    if(!o||k.dataset.id===id)return;
+    const r=k.getBoundingClientRect(),dx=o.left-r.left,dy=o.top-r.top;
+    if(Math.abs(dx)+Math.abs(dy)>1)k.animate([{transform:`translate(${dx}px,${dy}px)`},{transform:'none'}],{duration:450,easing:'cubic-bezier(.3,1.2,.5,1)'});
+  });
+}
+// 画面下の案内バー(並べ替えモードのときだけ表示)
+function renderArm(){
+  const bar=$('#armbar'),b=find(state.sel);
+  document.body.classList.toggle('arranging',state.arrange);
+  bar.hidden=!state.arrange;
+  if(!state.arrange)return;
+  bar.innerHTML=`<p>${b?`<span class="r1"><b class="t">「${esc(b.title)}」</b>を移動中</span><small>本をタップ→その前 / 点線枠→棚の最後</small>`:'動かしたい本をタップ(または長押し)してください。'}</p>${b?'<button class="btn" data-a="cancel">やめる</button>':''}<button class="btn pri" data-a="done">完了</button>`;
+}
+
+// ジャンルのタブを1つ左(left)・右(right)へ動かす。棚の順番と同じ並びなので、棚も一緒に入れ替わる
+function moveTab(g,dir){
+  const a=state.genres,i=a.indexOf(g),j=i+(dir==='left'?-1:1);
+  if(i<0||j<0||j>=a.length)return;
+  const box=$('#tabs'),sl=box.scrollLeft;
+  const before=new Map([...box.querySelectorAll('.arr')].map(t=>[t.dataset.g,t.getBoundingClientRect().left]));
+  [a[i],a[j]]=[a[j],a[i]];
+  save();renderTabs();renderShelves(false);
+  const tabs=[...box.querySelectorAll('.arr')],moved=tabs.find(t=>t.dataset.g===g);
+  if(moved)moved.scrollIntoView({inline:'nearest',block:'nearest'}); // 画面の外に出ないようにする
+  if(matchMedia('(prefers-reduced-motion:reduce)').matches)return;
+  const ds=box.scrollLeft-sl;
+  tabs.forEach(t=>{ // 入れ替わったタブがすべるように動く
+    const dx=before.get(t.dataset.g)-ds-t.getBoundingClientRect().left;
+    if(Math.abs(dx)>1)t.animate([{transform:`translateX(${dx}px)`},{transform:'none'}],{duration:380,easing:'cubic-bezier(.3,1.2,.5,1)'});
+  });
+  if(moved)moved.animate([{boxShadow:'0 0 22px 6px rgba(255,214,120,.95)'},{boxShadow:'0 0 0 0 rgba(255,214,120,0)'}],{duration:700});
+}
+
+// マウスを乗せると、タイトルなどの詳細を表示
+const tip=$('#tip');
+function showTip(el){
+  const b=find(el.dataset.id);if(!b)return;
+  tip.innerHTML=`<b>${esc(b.title)}</b><br>${esc(b.genre)} ・ ${fmt(b.date)}<br><span>${'★'.repeat(b.rating)}${'☆'.repeat(5-b.rating)}</span>${b.memo?`<em>${esc(b.memo.slice(0,60))}${b.memo.length>60?'…':''}</em>`:''}`;
+  const r=el.getBoundingClientRect(),w=tip.offsetWidth,up=r.top>tip.offsetHeight+90;
+  tip.style.left=Math.min(Math.max(r.left+r.width/2,w/2+8),innerWidth-w/2-8)+'px';
+  tip.style.top=(up?r.top-20:r.bottom+10)+'px';
+  tip.style.transform=up?'translate(-50%,-100%)':'translate(-50%,0)';
+  tip.classList.add('on');
+}
+$('#shelves').addEventListener('pointerover',e=>{const k=e.target.closest('.book');if(k&&e.pointerType==='mouse')showTip(k)});
+$('#shelves').addEventListener('pointerout',e=>{if(e.target.closest('.book'))tip.classList.remove('on')});
+
+/* =====================================================
+   6. 追加・編集画面
+   ===================================================== */
+const ov=$('#ov'),ov2=$('#ov2'),ov3=$('#ov3');
+const show=o=>{o.hidden=false;requestAnimationFrame(()=>requestAnimationFrame(()=>o.classList.add('show')))};
+const hide=o=>{o.classList.remove('show');setTimeout(()=>{o.hidden=true},300)};
+function fillGenres(v){$('#g').innerHTML=state.genres.map(g=>`<option${g===v?' selected':''}>${esc(g)}</option>`).join('')}
+function setRating(n,pop){
+  rating=n;
+  [...$('#rs').children].forEach((b,i)=>{b.classList.toggle('on',i<n);b.classList.remove('pop');if(pop&&i<n){void b.offsetWidth;b.classList.add('pop')}});
+  $('#rl').textContent=CONFIG.ratingLabels[n];
+}
+function openM(id,from){
+  tip.classList.remove('on');
+  editId=id||null;
+  const b=find(id),del=$('#del');
+  $('#mt').textContent=b?'本を編集':'本を追加';
+  $('#t').value=b?b.title:'';
+  fillGenres(b?b.genre:(state.genres.includes(state.filter)?state.filter:state.genres[0]));
+  $('#d').value=b?b.date:today();
+  $('#m').value=b?(b.memo||''):'';
+  $('#gnew').hidden=true;
+  del.hidden=!b;del.textContent='削除';delete del.dataset.arm;
+  setRating(b?b.rating:3);
+  const fancy=!!(b&&from&&from.isConnected&&!matchMedia('(prefers-reduced-motion:reduce)').matches); // 本をタップしたときだけ、本を開く動き
+  endCover();ov.classList.remove('in');ov.classList.toggle('bko',fancy);
+  show(ov);
+  if(fancy)openBook(from,b);
+  if(!b)setTimeout(()=>$('#t').focus(),350);
+}
+function closeM(){endCover();ov.classList.remove('bko','in');hide(ov)}
+
+// 本を開く動き(約0.8秒。表紙をタップすると、すぐに飛ばせる)
+//  1) 背表紙が棚から少し抜けて、画面の編集画面の位置まで広がり、表紙になる
+//  2) 表紙が左のとじ側を軸に開いて、編集画面が現れる
+let cover=null;
+function endCover(){
+  if(!cover)return;
+  const c=cover;cover=null;
+  c.anims.forEach(a=>a.cancel());c.el.remove();
+  if(c.from.isConnected)c.from.style.visibility='';
+  ov.classList.add('in');
+}
+function openBook(from,b){
+  const r=from.getBoundingClientRect(),sh=$('#ov .sheet'),s=sh.getBoundingClientRect(),rad=getComputedStyle(sh).borderRadius,cs=from.style;
+  const el=document.createElement('div');
+  el.className='cv';
+  el.style.cssText=`left:${r.left}px;top:${r.top}px;width:${r.width}px;height:${r.height}px;--bh:${cs.getPropertyValue('--bh')};--bs:${cs.getPropertyValue('--bs')};--bl:${cs.getPropertyValue('--bl')}`;
+  el.innerHTML=`<div class="cvr"><div class="cf"><div class="lb"><b>${esc(b.title)}</b><small>${esc(b.genre)}</small></div></div><div class="cb"></div></div>`;
+  document.body.append(el);
+  from.style.visibility='hidden';
+  const box=(x,y,w,h,br)=>({left:x+'px',top:y+'px',width:w+'px',height:h+'px',borderRadius:br});
+  const a1=el.animate([box(r.left,r.top,r.width,r.height,'3px 3px 1px 1px'),{...box(r.left,r.top-22,r.width,r.height,'3px 3px 1px 1px'),offset:.25},box(s.left,s.top,s.width,s.height,rad)],{duration:320,easing:'cubic-bezier(.3,1.1,.4,1)',fill:'forwards'});
+  const a2=el.firstChild.animate([{transform:'rotateY(0deg)'},{transform:'rotateY(-168deg)'}],{duration:440,delay:320,easing:'cubic-bezier(.55,0,.25,1)',fill:'both'});
+  cover={el,from,anims:[a1,a2]};
+  setTimeout(()=>{if(cover&&cover.el===el)ov.classList.add('in')},310);   // 表紙が編集画面にかぶさったら、編集画面を表示
+  el.onclick=endCover;a2.onfinish=endCover;
+}
+
+$('#add').onclick=()=>openM();
+$('#no').onclick=closeM;
+ov.onclick=e=>{if(e.target===ov)closeM()};
+document.addEventListener('keydown',e=>{if(e.key!=='Escape')return;if(!ov.hidden)closeM();[ov2,ov3].forEach(o=>{if(!o.hidden)hide(o)})});
+$('#rs').onclick=e=>{const b=e.target.closest('button');if(b)setRating(+b.dataset.n,true)};
+
+// ジャンルを追加
+$('#ga').onclick=()=>{const g=$('#gnew');g.hidden=!g.hidden;if(!g.hidden)$('#gi').focus()};
+function addGenre(){
+  const n=$('#gi').value.trim();
+  if(!n)return;
+  if(!state.genres.includes(n))state.genres.push(n);
+  fixGenres();save();fillGenres(n);$('#gi').value='';$('#gnew').hidden=true;renderTabs();
+}
+$('#gok').onclick=addGenre;
+$('#gi').onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();addGenre()}};
+
+// 保存(タイトルが空のときは入力欄を揺らして知らせる)
+$('#t').addEventListener('animationend',e=>e.target.classList.remove('shake'));
+$('#ok').onclick=()=>{
+  const t=$('#t').value.trim();
+  if(!t){const el=$('#t');el.classList.remove('shake');void el.offsetWidth;el.classList.add('shake');el.focus();return}
+  let dup=false;
+  const o={title:t,genre:$('#g').value,date:$('#d').value,rating,memo:$('#m').value.trim()};
+  if(editId){newId=editId;Object.assign(find(editId),o)}
+  else{dup=state.books.some(x=>x.title===t);newId=Date.now().toString(36)+Math.random().toString(36).slice(2,6);state.books.push({id:newId,...o})}
+  save();closeM();renderAll(false);toast(editId?'更新しました':dup?'棚に並べました(同じ題名の本がほかにもあります)':'棚に並べました');
+};
+
+// 削除(1回目で確認表示、3秒以内にもう一度押すと削除)
+$('#del').onclick=()=>{
+  const b=$('#del');
+  if(b.dataset.arm){mark('削除前');state.books=state.books.filter(x=>x.id!==editId);save();closeM();renderAll(false);toast('削除しました',UNDO);return}
+  b.dataset.arm=1;b.textContent='本当に削除する';
+  setTimeout(()=>{delete b.dataset.arm;b.textContent='削除'},3000);
+};
+
+/* =====================================================
+   7. 検索・データ画面(統計・バックアップ)・その他
+   ===================================================== */
+// 検索: 入力するたびに絞り込む(キーボードの「検索」キーでキーボードを閉じる)
+$('#q').addEventListener('input',e=>{state.q=e.target.value;renderShelves(false)});
+$('#q').addEventListener('keydown',e=>{if(e.key==='Enter')e.target.blur()});
+
+// 下にスクロールすると上部バーを隠し、上にスクロールすると再表示(画面を広く使うため)
+let lastY=0;
+addEventListener('scroll',()=>{
+  const y=scrollY;
+  $('.top').classList.toggle('hide',y>lastY&&y>120&&document.activeElement!==$('#q'));
+  lastY=y;
+},{passive:true});
+
+// 画面下に出る小さなお知らせ。act={label,fn} を渡すと、ボタン付き(「元に戻す」など)になる
+function toast(t,act,ms){
+  const el=$('#toast');
+  el.textContent=t;el.classList.toggle('act',!!act);
+  if(act){const b=document.createElement('button');b.type='button';b.textContent=act.label;b.onclick=()=>{el.classList.remove('on');act.fn()};el.append(b)}
+  el.classList.add('on');
+  clearTimeout(toast.t);toast.t=setTimeout(()=>el.classList.remove('on'),ms||(act?6000:2200));
+}
+
+// 数字をカウントアップ表示する
+function countUp(el){
+  const raw=el.textContent,to=parseFloat(raw);
+  if(isNaN(to)||matchMedia('(prefers-reduced-motion:reduce)').matches)return;
+  const dec=raw.includes('.')?1:0,t0=performance.now();
+  (function f(t){const p=Math.min((t-t0)/800,1);el.textContent=(to*(1-Math.pow(1-p,3))).toFixed(dec);if(p<1)requestAnimationFrame(f)})(t0);
+}
+
+// データ画面: 冊数・今年の冊数・平均おすすめ度・直近12か月のグラフ
+function renderStats(){
+  const b=state.books,y=new Date().getFullYear(),n=b.length;
+  const avg=n?(b.reduce((a,x)=>a+x.rating,0)/n).toFixed(1):'–';
+  $('#stats').innerHTML=[[n,'冊(合計)'],[b.filter(x=>(x.date||'').startsWith(y)).length,`冊(${y}年)`],[avg,'平均おすすめ度']].map(([v,l])=>`<div><b>${v}</b><span>${l}</span></div>`).join('');
+  document.querySelectorAll('#stats b').forEach(countUp);
+  const now=new Date(),ms=[];
+  for(let k=11;k>=0;k--){const d=new Date(now.getFullYear(),now.getMonth()-k,1);ms.push(`${d.getFullYear()}-${pad(d.getMonth()+1)}`)}
+  const cnt=ms.map(m=>b.filter(x=>(x.date||'').startsWith(m)).length),mx=Math.max(1,...cnt);
+  $('#bars').innerHTML=ms.map((m,k)=>`<div class="mb"><em>${cnt[k]||''}</em><i class="${cnt[k]?'':'z'}" style="--p:${cnt[k]/mx};--d:${k*50}ms"></i><span>${+m.slice(5)}</span></div>`).join('');
+}
+$('#menu').onclick=()=>{renderStats();renderLayout();renderMode();renderSnaps();renderBackupInfo();show(ov2)};
+// 棚の表示方法(横スクロール / 折り返し)
+function renderLayout(){$('#hs1').classList.toggle('pri',state.hs);$('#hs0').classList.toggle('pri',!state.hs)}
+function setLayout(hs){state.hs=hs;saveUI();renderLayout();renderShelves(false)}
+$('#hs1').onclick=()=>setLayout(true);
+$('#hs0').onclick=()=>setLayout(false);
+$('#close2').onclick=()=>hide(ov2);
+ov2.onclick=e=>{if(e.target===ov2)hide(ov2)};
+
+// ----- 元に戻す・自動バックアップ -----
+// 削除・移動・読み込みなどの前に、いまの状態を覚えておき、「元に戻す」で戻せる。
+// 削除・読み込み・復元の前には、この端末のなか(localStorage)に自動バックアップも残す(CONFIG.snapshots 件まで)。
+const cur=()=>JSON.parse(JSON.stringify({books:state.books,genres:state.genres,hue:state.hue,sort:state.sort}));
+let undoData=null;
+const SNAPKEY=CONFIG.storageKey+':snaps',METAKEY=CONFIG.storageKey+':meta';
+function snaps(){try{return JSON.parse(localStorage.getItem(SNAPKEY))||[]}catch(e){return[]}}
+function snapshot(why){
+  const d=cur();
+  if(!d.books.length)return;
+  const a=snaps();
+  if(a[0]&&JSON.stringify(a[0].data)===JSON.stringify(d))return;   // 前回と同じ内容なら保存しない
+  a.unshift({t:Date.now(),why,n:d.books.length,data:d});
+  for(let k=CONFIG.snapshots;k>=1;k--){try{localStorage.setItem(SNAPKEY,JSON.stringify(a.slice(0,k)));return}catch(e){}} // 容量が足りないときは、古いものから減らす
+}
+function mark(why){undoData=cur();if(why)snapshot(why)}   // why を渡すと、自動バックアップも残す
+function applyData(d){  // 保存されていた状態に丸ごと戻す
+  state.books=d.books;state.genres=d.genres;state.hue=d.hue||{};
+  if(d.sort){state.sort=d.sort;$('#sort').value=d.sort;saveUI()}
+  fixGenres();
+  if(state.filter!=='すべて'&&!state.genres.includes(state.filter)){state.filter='すべて';saveUI()}
+  state.sel=null;save();renderAll(false);renderArm();
+}
+function undo(){if(!undoData)return;const d=undoData;undoData=null;applyData(d);toast('元に戻しました')}
+const UNDO={label:'元に戻す',fn:undo};
+const fmtT=t=>{const d=new Date(t);return `${d.getMonth()+1}/${d.getDate()} ${pad(d.getHours())}:${pad(d.getMinutes())}`};
+
+// 自動バックアップの一覧と復元
+function renderSnaps(){
+  const a=snaps();
+  $('#snaps').innerHTML=a.length?a.map((x,i)=>`<div class="sn"><span>${fmtT(x.t)}<small>${x.n}冊 ・ ${esc(x.why)}</small></span><button class="btn" type="button" data-sn="${i}">戻す</button></div>`).join(''):'<p class="note">まだありません。開いたとき(1日1回)と、削除・読み込みの前に、自動で残ります。</p>';
+}
+$('#snaps').onclick=e=>{
+  const b=e.target.closest('[data-sn]'),x=b&&snaps()[+b.dataset.sn];
+  if(!x)return;
+  mark('復元前');applyData(x.data);hide(ov2);toast(`${fmtT(x.t)}の状態に戻しました`,UNDO);
+};
+
+// ----- バックアップ(ファイル・コピー・CSV) -----
+let meta={};
+try{meta=JSON.parse(localStorage.getItem(METAKEY))||{}}catch(e){}
+const needBackup=()=>state.books.length>=3&&(!meta.lastBackup||Date.now()-meta.lastBackup>14*864e5);   // 3冊以上で、未保存か2週間以上たっている
+function renderBackupInfo(){  // データ画面の案内と、「データ」ボタンの印
+  const d=meta.lastBackup?Math.floor((Date.now()-meta.lastBackup)/864e5):null;
+  $('#bkinfo').textContent=(d===null?'最後のバックアップ: まだありません':`最後のバックアップ: ${d===0?'今日':d+'日前'}`)+'。ファイルはファイルアプリなどに、コピーはメモアプリなどに貼り付けて保管できます。';
+  $('#menu').classList.toggle('dot',needBackup());
+}
+function markBackup(){meta.lastBackup=Date.now();try{localStorage.setItem(METAKEY,JSON.stringify(meta))}catch(e){}renderBackupInfo()}
+const backupJSON=()=>JSON.stringify({app:'booklog',v:2,date:today(),...cur()},null,1);
+// ファイルの保存: iPhoneでは共有シート(「ファイルに保存」など)、使えないときはダウンロード
+async function saveFile(name,type,text){
+  const file=new File([text],name,{type});
+  if(navigator.canShare&&navigator.canShare({files:[file]})){
+    try{await navigator.share({files:[file]});return true}catch(e){if(e&&e.name==='AbortError')return false}
+  }
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(file);a.download=name;
+  document.body.append(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href),2000);
+  return true;
+}
+function copyText(t){
+  const fallback=()=>{ // 古いブラウザや、ファイルで開いたときの方法
+    const ta=document.createElement('textarea');
+    ta.value=t;ta.readOnly=true;ta.style.cssText='position:fixed;top:0;left:0;opacity:0;font-size:16px';
+    document.body.append(ta);ta.select();ta.setSelectionRange(0,t.length);
+    try{document.execCommand('copy')}catch(e){}
+    ta.remove();
+  };
+  if(navigator.clipboard&&window.isSecureContext)navigator.clipboard.writeText(t).catch(fallback);else fallback();
+}
+$('#exp').onclick=async()=>{if(await saveFile(`book-log-${today()}.json`,'application/json',backupJSON())){markBackup();toast('バックアップを保存しました')}};
+$('#cpy').onclick=()=>{copyText(backupJSON());markBackup();toast('コピーしました。メモアプリなどに貼り付けて保管できます')};
+$('#csv').onclick=async()=>{ // Excelで開ける形式(先頭に目印のBOMを付ける)
+  const q=v=>`"${String(v).replace(/"/g,'""')}"`,rows=[['タイトル','ジャンル','読了日','おすすめ度','メモ']];
+  state.genres.forEach(g=>sortBooks(state.books.filter(b=>b.genre===g)).forEach(b=>rows.push([b.title,b.genre,b.date||'',b.rating,b.memo||''])));
+  if(await saveFile(`book-log-${today()}.csv`,'text/csv','\ufeff'+rows.map(r=>r.map(q).join(',')).join('\r\n')))toast('CSVを保存しました');
+};
+
+// ----- 読み込み・復元(ファイル / 貼り付け) -----
+// 「追加する」: いまの記録に足す(同じ本は重複しない)。「置き換える」: いまの記録を、バックアップの内容にそろえる。
+let impReplace=false;
+function renderMode(){
+  $('#m1').classList.toggle('pri',!impReplace);$('#m0').classList.toggle('pri',impReplace);
+  $('#minfo').textContent=impReplace?'いまの記録を、バックアップの内容にそろえます(いまの記録は自動で残ります)。':'いまの記録に、バックアップの本を足します(同じ本は重複しません)。';
+}
+$('#m1').onclick=()=>{impReplace=false;renderMode()};
+$('#m0').onclick=()=>{impReplace=true;renderMode()};
+function importData(r,replace){
+  if(!r||!Array.isArray(r.books))throw new Error('format');
+  const seen=new Set(),valid=r.books.filter(b=>b&&b.id&&b.title&&!seen.has(String(b.id))&&seen.add(String(b.id))).map(b=>({id:String(b.id),title:String(b.title),genre:b.genre?String(b.genre):'',date:b.date?String(b.date):'',rating:Math.min(5,Math.max(1,+b.rating||3)),memo:b.memo?String(b.memo):''}));
+  if(replace&&!valid.length)throw new Error('empty');
+  mark('読み込み前');
+  let n=0;
+  if(replace){
+    state.books=valid;n=valid.length;
+    state.genres=Array.isArray(r.genres)&&r.genres.length?r.genres.map(String):[...CONFIG.defaultGenres];
+    state.hue=(r.hue&&typeof r.hue==='object')?r.hue:{};
+  }else{
+    valid.forEach(b=>{if(!find(b.id)){state.books.push(b);n++}});
+    (r.genres||[]).forEach(g=>{if(!state.genres.includes(String(g)))state.genres.push(String(g))});
+  }
+  state.books.forEach(b=>{if(!b.genre)b.genre=state.genres[0]});
+  fixGenres();
+  if(state.filter!=='すべて'&&!state.genres.includes(state.filter)){state.filter='すべて';saveUI()}
+  save();renderAll(true);
+  return n;
+}
+function runImport(text){
+  try{
+    const i=text.indexOf('{'),j=text.lastIndexOf('}');   // 前後に余計な文字があっても、{ } の部分だけを使う
+    const n=importData(JSON.parse(i>=0&&j>i?text.slice(i,j+1):text),impReplace);
+    $('#ptxt').value='';$('#pbox').hidden=true;
+    hide(ov2);toast(`${n}冊を読み込みました`,UNDO);
+  }catch(err){toast('このバックアップは読み込めませんでした')}
+}
+$('#imp').onclick=()=>$('#file').click();
+$('#file').onchange=async e=>{const f=e.target.files[0];e.target.value='';if(f)runImport(await f.text())};
+$('#pst').onclick=()=>{const b=$('#pbox');b.hidden=!b.hidden;if(!b.hidden)$('#ptxt').focus()};
+$('#pgo').onclick=()=>runImport($('#ptxt').value);
+
+// ----- ジャンル名の変更(並べ替えモードの ✎) -----
+let renameFrom=null;
+function renameGenre(g){renameFrom=g;$('#gname').value=g;show(ov3);$('#gname').focus();$('#gname').select()}
+function doRename(){
+  const g=renameFrom,n=$('#gname').value.trim().slice(0,20);
+  if(!g)return;
+  if(!n||n===g){hide(ov3);return}
+  if(state.genres.includes(n)){ // 同じ名前は不可: 入力欄を揺らして知らせる
+    const el=$('#gname');el.classList.remove('shake');void el.offsetWidth;el.classList.add('shake');
+    toast('同じ名前のジャンルがすでにあります');return;
+  }
+  hide(ov3);mark();
+  state.genres[state.genres.indexOf(g)]=n;
+  state.books.forEach(b=>{if(b.genre===g)b.genre=n});
+  if(hasHue(g)){state.hue[n]=state.hue[g];delete state.hue[g]}
+  if(state.filter===g){state.filter=n;saveUI()}
+  save();renderAll(false);toast('ジャンル名を変更しました',UNDO);
+}
+$('#rok').onclick=doRename;
+$('#rno').onclick=()=>hide(ov3);
+ov3.onclick=e=>{if(e.target===ov3)hide(ov3)};
+$('#gname').onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();doRename()}};
+$('#gname').addEventListener('animationend',e=>e.target.classList.remove('shake'));
+
+// ----- 本のドラッグ並べ替え(1つの棚の中) -----
+// スマホ: 本を長押し(約0.4秒)すると持ち上がり、指を動かすと好きな位置へ動かせる。指を離すと、その位置に置かれる。
+// PC: 本をそのままドラッグ。棚の端に近づくと、横に自動でスクロールする。置いた並びは「自分の並べ方」として保存される。
+let drag=null,noClickUntil=0;
+const LONG=380;   // 長押しと判定する時間(ミリ秒)
+function dragStart(e,pt,touch){
+  const k=e.target.closest('.book');
+  if(!k||drag||state.sel||!ov.hidden||!ov2.hidden||!ov3.hidden)return;
+  const books=k.closest('.books');
+  drag={k,slot:k.parentElement,books,x0:pt.clientX,y0:pt.clientY,x:pt.clientX,y:pt.clientY,touch,active:false,start:[...books.querySelectorAll('.book')].map(b=>b.dataset.id)};
+  if(touch)drag.timer=setTimeout(dragActivate,LONG);
+}
+function dragActivate(){
+  const d=drag;
+  if(!d||d.active)return;
+  d.active=true;clearTimeout(d.timer);
+  const r=d.k.getBoundingClientRect(),g=d.k.cloneNode(true);   // 指についてくる「持ち上げた本」
+  g.classList.add('ghost');g.removeAttribute('data-id');g.style.left=r.left+'px';g.style.top=r.top+'px';
+  document.body.append(g);
+  Object.assign(d,{ghost:g,gx:r.left,gy:r.top});
+  d.slot.classList.add('ph');d.books.classList.add('dg');document.body.classList.add('dragging');
+  tip.classList.remove('on');
+  noClickUntil=Date.now()+600;
+  if(navigator.vibrate)navigator.vibrate(12);
+  placeGhost();
+  d.raf=requestAnimationFrame(dragTick);
+}
+function placeGhost(){
+  const d=drag;
+  d.tf=`translate(${d.x-d.x0}px,${d.y-d.y0}px) scale(1.12) rotate(-3deg)`;
+  d.ghost.style.transform=d.tf;
+}
+function dragTick(){ // 動かしている間、毎コマ: 自動スクロールと、置き場所(点線の枠)の更新
+  const d=drag;
+  if(!d||!d.active)return;
+  const r=d.books.getBoundingClientRect(),edge=56;
+  let v=d.x<r.left+edge?-(1-(d.x-r.left)/edge):d.x>r.right-edge?(1-(r.right-d.x)/edge):0;
+  v=Math.max(-1,Math.min(1,v));
+  if(v&&state.hs)d.books.scrollLeft+=v*14;                   // 横スクロール表示: 棚の端で横に
+  if(!state.hs){                                             // 折り返し表示: 画面の上下の端でページを
+    const t=d.y<130?-(1-(d.y-60)/70):d.y>innerHeight-80?(1-(innerHeight-d.y)/80):0;
+    if(t)scrollBy(0,Math.max(-1,Math.min(1,t))*16);
+  }
+  dragReorder();
+  d.raf=requestAnimationFrame(dragTick);
+}
+function dragReorder(){
+  const d=drag,slots=[...d.books.children].filter(c=>c.classList.contains('slot')&&c!==d.slot&&!c.classList.contains('end'));
+  if(!slots.length)return;
+  let best=null,bd=1e9;
+  slots.forEach(s=>{ // 指にいちばん近い本を探し、その左か右に置き場所を作る
+    const r=s.getBoundingClientRect(),cx=r.left+r.width/2,cy=r.top+r.height/2,dist=Math.hypot(d.x-cx,(d.y-cy)*.6);
+    if(dist<bd){bd=dist;best={s,before:d.x<cx}}
+  });
+  const ref=best.before?best.s:best.s.nextElementSibling;
+  if(d.slot.nextElementSibling===ref)return;                 // もう、その位置にある
+  const motion=!matchMedia('(prefers-reduced-motion:reduce)').matches,old=new Map(slots.map(s=>[s,s.getBoundingClientRect()]));
+  d.books.insertBefore(d.slot,ref);
+  if(motion)slots.forEach(s=>{ // ほかの本が、すべるように場所をゆずる
+    const a=old.get(s),b=s.getBoundingClientRect(),dx=a.left-b.left,dy=a.top-b.top;
+    if(Math.abs(dx)+Math.abs(dy)>1)s.animate([{transform:`translate(${dx}px,${dy}px)`},{transform:'none'}],{duration:220,easing:'cubic-bezier(.3,1.2,.5,1)'});
+  });
+}
+function dragEnd(){
+  const d=drag;
+  if(!d)return;
+  clearTimeout(d.timer);drag=null;
+  if(!d.active)return;
+  cancelAnimationFrame(d.raf);
+  noClickUntil=Date.now()+450;
+  const ids=[...d.books.querySelectorAll('.book')].map(b=>b.dataset.id);
+  const done=()=>{
+    d.ghost.remove();d.slot.classList.remove('ph');d.books.classList.remove('dg');document.body.classList.remove('dragging');
+    if(ids.join()!==d.start.join())applyShelfOrder(ids);
+  };
+  if(matchMedia('(prefers-reduced-motion:reduce)').matches)return done();
+  const p=d.slot.getBoundingClientRect(); // 持ち上げた本が、点線の枠へすっと降りる
+  d.ghost.animate([{transform:d.tf},{transform:`translate(${p.left-d.gx}px,${p.top-d.gy}px)`}],{duration:170,easing:'ease-out',fill:'forwards'}).onfinish=done;
+}
+// 新しい並びを保存する(ids: その棚に見えている本を、新しい順に並べたID)
+function applyShelfOrder(ids){
+  mark();                                            // 元に戻す用
+  const sw=state.sort!=='man';
+  if(sw)bakeOrder();                                 // いま見えている並び(日付順など)を、手動の並びとして確定してから
+  const by=new Map(state.books.map(b=>[b.id,b])),pos=ids.map(id=>state.books.indexOf(by.get(id))).sort((a,b)=>a-b);
+  pos.forEach((p,k)=>{state.books[p]=by.get(ids[k])});   // その棚の本が入っていた場所に、新しい順で入れ直す
+  state.sort='man';$('#sort').value='man';saveUI();
+  save();renderAll(false);
+  toast(sw?'「自分の並べ方」に切り替えて、並べ替えました':'並べ替えました',UNDO);
+}
+const shelves=$('#shelves');
+shelves.addEventListener('touchstart',e=>{if(e.touches.length===1)dragStart(e,e.touches[0],true);else dragEnd()},{passive:true});
+shelves.addEventListener('touchmove',e=>{
+  const d=drag;
+  if(!d||!d.touch)return;
+  const t=e.touches[0];
+  if(!d.active){if(Math.hypot(t.clientX-d.x0,t.clientY-d.y0)>8){clearTimeout(d.timer);drag=null}return}   // 長押しの前に動いたら、ふつうのスクロール
+  if(e.cancelable)e.preventDefault();                // 持ち上げている間は、画面をスクロールさせない
+  d.x=t.clientX;d.y=t.clientY;placeGhost();
+},{passive:false});
+shelves.addEventListener('touchend',dragEnd);
+shelves.addEventListener('touchcancel',dragEnd);
+shelves.addEventListener('mousedown',e=>{if(e.button===0)dragStart(e,e,false)});
+addEventListener('mousemove',e=>{
+  const d=drag;
+  if(!d||d.touch)return;
+  if(!d.active){if(Math.hypot(e.clientX-d.x0,e.clientY-d.y0)>5)dragActivate();else return}
+  d.x=e.clientX;d.y=e.clientY;placeGhost();
+});
+addEventListener('mouseup',()=>{if(drag&&!drag.touch)dragEnd()});
+shelves.addEventListener('contextmenu',e=>{if(e.target.closest('.book')&&(drag||navigator.maxTouchPoints>0))e.preventDefault()});   // 長押しのメニューを出さない
+shelves.addEventListener('click',e=>{if(Date.now()<noClickUntil){e.stopPropagation();e.preventDefault()}},true);   // 持ち上げたあとの指離しで、編集画面が開かないように
+
+/* =====================================================
+   8. 起動
+   ===================================================== */
+load();
+loadUI();
+renderAll(true);
+setTimeout(()=>{$('#tabs').classList.remove('intro');document.body.classList.remove('boot')},2000); // 開いた直後だけ、ジャンル名が順に現れる
+{const a0=snaps()[0];if(state.books.length&&(!a0||Date.now()-a0.t>20*36e5))snapshot('自動')} // 1日1回、自動でバックアップ
+try{if(navigator.storage&&navigator.storage.persist)navigator.storage.persist()}catch(e){}
+if(!meta.hintDrag&&state.books.length>=2){ // 初めてのとき1回だけ、並べ替えのヒント
+  meta.hintDrag=1;try{localStorage.setItem(METAKEY,JSON.stringify(meta))}catch(e){}
+  setTimeout(()=>toast('本を長押しして動かすと、同じ棚の中で並べ替えできます',null,5000),2600);
+} // ブラウザに「記録を消さないで」と頼む
+if(!matchMedia('(prefers-reduced-motion:reduce)').matches){
+  for(let k=0;k<CONFIG.motes;k++){ // 舞う光の粒
+    const m=document.createElement('i');
+    m.className='mote';
+    m.style.cssText=`left:${Math.random()*100}%;--s:${2+Math.random()*3}px;--d:${12+Math.random()*14}s;--l:${-Math.random()*20}s;--x:${Math.random()*80-40}px`;
+    document.body.append(m);
+  }
+}
+})();
+</script>
+</body>
+</html>
